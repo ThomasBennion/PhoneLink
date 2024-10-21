@@ -6,9 +6,10 @@ import ssl
 import PIL
 import PIL.Image
 from PIL.Image import Image
-import io
-
 import PIL.ImageMode
+from RenderScreen import RenderScreen
+import ctypes
+import os
 
 class ChatServer:
 
@@ -26,6 +27,8 @@ class ChatServer:
         self.context.load_verify_locations(cafile="rootCA.pem")
         
         self.imageNumber = 0
+        self.RenderScreen = RenderScreen
+        self.RenderData = None
 
     def read_port_number(self):
         """
@@ -63,6 +66,10 @@ class ChatServer:
         self.client_name = self.conn.recv(1024).decode()
         print(("[(" + time.strftime("%H:%M:%S", time.localtime()) + ")] Get a connection from " + self.client_name), file=sys.stdout)
         self.conn.send(("Welcome to the channel, " + self.client_name).encode('utf-8'))
+        #self.RenderScreen.Render_Screen((1440 // 4), (2920 // 4), self.RenderData)
+        self.RenderData = bytearray(4204800)
+        #self.RenderData = bytearray(1074560)
+        threading.Thread(target=self.RenderScreen.Render_Screen, args=(1440 // 2, 2920 // 2, self.RenderData)).start()
         return None
     
     def recv_image(self):
@@ -78,18 +85,13 @@ class ChatServer:
                 imageData += packet
             
             # At this point, you have the complete frame in `frame_data`
-            print(f'Received frame of size: {len(imageData)} bytes')
+            #print(f'Received frame of size: {len(imageData)} bytes')
             
-            #imageFile = PIL.Image.open(io.BytesIO(imageData))
-            
-            imageFile = PIL.Image.frombytes("RGBA", (1440 // 2, 2920 // 2), imageData)
-            imageFile.save(f"Images/Image{self.imageNumber}.png")
-            
-            imageFile.close()
-            
-            #imageFile = open(f"Images/Image{self.imageNumber}.txt", "wb")
-            #imageFile.write(imageData)
+            #imageFile = PIL.Image.frombytes("RGBA", (1440 // 2, 2920 // 2), imageData)
+            #imageFile.save(f"Images/Image{self.imageNumber}.png")
+            #imageFile.close()
             self.imageNumber += 1
+            self.RenderData[:] = imageData
         else:
             print("Error receiving image", file=sys.stdout)
 
