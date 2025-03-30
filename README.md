@@ -4,8 +4,7 @@ Currently, the app established an SSLConnection with the server, and successfull
 With the server successfully receiving and rendering images taken from a MediaProjection service
 
 # TODO
-There's a lot TODO, but for now I am focussing on getting the images to be read into an openGL instance on the server. After that I will work on sending and receiving signals between the two.
-After this, the desktop should be able to both see and interact with the screen of the android device.
+There's a lot TODO, but for now I am getitng touch commands to be written and read between the server and the phone so the phone can be controlled remotely
 
 # Getting Started
 Currently, a lot of stuff is hardcoded for the purposes of establishing core functionality.
@@ -14,14 +13,14 @@ I am working on a means to have them read from a file when you start up the appl
 
 Add the trust anchor (root certificate authority) at:
 PhoneApp/app/src/main/res/raw/rootca.pem
-Server/rootCA.pem
+Server/certs/rootCA.pem
 
 Add the server certificate at:
 PhoneApp/app/src/main/assets/server.pem
-Server/server.pem
+Server/certs/server.pem
 
 Add the server key at:
-Server/server.key
+Server/certs/server.key
 
 Add the client certificate at:
 PhoneApp/app/src/main/assets/clientcert.pem
