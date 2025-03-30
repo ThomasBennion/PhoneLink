@@ -1,6 +1,9 @@
 package com.example.phoneapp.ui.theme
 
+import android.content.Context
 import android.util.Size
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import org.chromium.base.Promise
 import java.io.IOException
 import java.io.InputStream
@@ -32,7 +35,9 @@ import javax.net.ssl.TrustManagerFactory
 class SSLClient (
     hostSocket: InetSocketAddress,
     private val clientTrustManager: TrustManagerFactory,
-    private val clientKeyManager: KeyManagerFactory
+    private val clientKeyManager: KeyManagerFactory,
+    private val displaySize: Size,
+    private val dataStore: DataStore<Preferences>,
 ): Thread()
 {
     private val clientContext: SSLContext = SSLContext.getInstance("TLSv1.3")
@@ -46,6 +51,7 @@ class SSLClient (
     private val MESSAGE_BYTE: ByteArray = ByteArray(1) { 0 }
     private val IMAGE_BYTE: ByteArray = ByteArray(1) { 1 }
     private val SIGNAL_BYTE: ByteArray = ByteArray(1) { 2 }
+    private val HEADER_SIZE: Int = 7
 
     /** CheckConnection
      *
@@ -85,11 +91,11 @@ class SSLClient (
         }
     }
 
-    fun WriteImage(byteArray: ByteArray, displaySize: Size) {
+    fun WriteImage(byteArray: ByteArray) {
         try {
-            //println("Width: " + displaySize.width + " Height: " + displaySize.height)
-            val arraySize = byteArray.size.toString().toByteArray()
-            println("Value:" + byteArray.size + "Size:" + arraySize.size + "Total:" + (IMAGE_BYTE + arraySize + byteArray).size)
+            val sizeBuffer: ByteBuffer = ByteBuffer.allocate(HEADER_SIZE)
+            sizeBuffer.put(byteArray.size.toString().toByteArray())
+            val arraySize = sizeBuffer.array()
             this.outputStream.write((IMAGE_BYTE + arraySize + byteArray))
             this.outputStream.flush()
         } catch (e: IOException) {
@@ -137,6 +143,7 @@ class SSLClient (
 
     override fun run() {
         try {
+            
             this.clientContext.init(
                 clientKeyManager.keyManagers,
                 clientTrustManager.trustManagers,
@@ -164,6 +171,7 @@ class SSLClient (
      */
     fun connect(socketAddress: InetSocketAddress) {
         try {
+
             this.hostAddress = socketAddress.address
             this.port = socketAddress.port
             println("Connecting...")
@@ -178,7 +186,7 @@ class SSLClient (
                 this.inputStream = socket.inputStream
                 this.outputStream = socket.outputStream
                 println("Connected")
-                this.WriteMessage("Android".encodeToByteArray())
+                this.WriteMessage("${displaySize.height}:${displaySize.width}:${HEADER_SIZE}:Android".encodeToByteArray())
             } else {
                 println("Failed to connect")
             }
@@ -211,5 +219,12 @@ class SSLClient (
             returnValue.fulfill(false)
         }
         return returnValue
+    }
+
+    override fun interrupt() {
+        this.disconnect()
+            .then {
+                super.interrupt()
+            }
     }
 }
