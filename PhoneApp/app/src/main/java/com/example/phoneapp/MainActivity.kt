@@ -1,15 +1,17 @@
 package com.example.phoneapp
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.ImageFormat
+import android.graphics.BitmapFactory
 import android.graphics.Insets
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.media.Image
+import android.media.Image.Plane
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -22,13 +24,25 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageBitmapConfig
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.phoneapp.ui.theme.SSLClient
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.io.OutputStream
 import java.net.InetSocketAddress
+import java.nio.ByteBuffer
 import java.security.KeyFactory
 import java.security.KeyPair
 import java.security.KeyStore
@@ -44,7 +58,34 @@ import javax.net.ssl.TrustManagerFactory
 
 class MainActivity : ComponentActivity() {
 
+    val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
     override fun onCreate(savedInstanceState: Bundle?) {
+
+        val metrics = windowManager.currentWindowMetrics
+        // Gets all excluding insets
+        // Gets all excluding insets
+        val windowInsets: WindowInsets = metrics.windowInsets
+        val insets: Insets = windowInsets.getInsetsIgnoringVisibility(
+            WindowInsets.Type.navigationBars()
+                    or WindowInsets.Type.displayCutout()
+        )
+
+        val insetsWidth: Int = insets.right + insets.left
+        val insetsHeight: Int = insets.top + insets.bottom
+
+        // Legacy size that Display#getSize reports
+
+        // Legacy size that Display#getSize reports
+        val bounds: Rect = metrics.bounds
+
+        val displaySize = Size(
+            bounds.width(),
+            bounds.height()
+            //(bounds.width() - insetsWidth),
+            //(bounds.height() - insetsHeight)
+        )
+
         val startScreen = "home_screen"
 
         if (checkSelfPermission("android.permission.FOREGROUND_SERVICE")
@@ -57,8 +98,16 @@ class MainActivity : ComponentActivity() {
                     "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
                 )), 1);
         }
-        val port = 4655
-        val address = "192.168.1.100"
+
+        val EXAMPLE_COUNTER = intPreferencesKey("example_counter")
+        val exampleCounterFlow: Flow<Int> = this.dataStore.data
+            .map { preferences ->
+                // No type safety.
+                preferences[EXAMPLE_COUNTER] ?: 4655
+            }
+        val port: Int = 4655
+        val address = "192.168.5.30"
+        val bufferSize = 1089024
         val host = InetSocketAddress(address, port)
         val clientTrustManager: TrustManagerFactory = TrustManagerFactory.getInstance(
             TrustManagerFactory.getDefaultAlgorithm()
@@ -69,7 +118,7 @@ class MainActivity : ComponentActivity() {
         val appKeyStore: KeyStore = setCertificate()
         clientTrustManager.init(appKeyStore)
         clientKeyManager.init(appKeyStore, null)
-        val client = SSLClient(host, clientTrustManager, clientKeyManager)
+        val client = SSLClient(host, clientTrustManager, clientKeyManager, displaySize, this.dataStore)
         client.start()
         super.onCreate(savedInstanceState)
         val mediaProjectionManager =
@@ -77,11 +126,22 @@ class MainActivity : ComponentActivity() {
 
         val imageThread = HandlerThread("Image Thread")
         val displayThread = HandlerThread("Virtual Display Thread")
+        val mediaThread = HandlerThread("Media Display Thread")
         imageThread.start()
         displayThread.start()
+        mediaThread.start()
+        val mediaHandler: Handler = Handler.createAsync(mediaThread.looper)
         val imageHandler: Handler = Handler.createAsync(imageThread.looper)
         val displayHandler: Handler = Handler.createAsync(displayThread.looper)
-        val resultLauncher = getResultLauncher(mediaProjectionManager, client, imageHandler, displayHandler)
+
+        val resultLauncher = getResultLauncher(
+            mediaProjectionManager,
+            client,
+            imageHandler,
+            displayHandler,
+            mediaHandler,
+            displaySize
+        )
 
         setContent {
             val navController = rememberNavController()
@@ -144,11 +204,54 @@ class MainActivity : ComponentActivity() {
         return appKeyStore
     }
 
+    private fun getBitmap(image:Image): Bitmap {
+        val buffer = image.planes[0].buffer
+        val frameBitmap: Bitmap = Bitmap.createBitmap(
+            image.width,
+            image.height,
+            Bitmap.Config.ARGB_8888,
+        )
+
+        val rowStride = image.planes[0].rowStride
+        val pixelStride = image.planes[0].pixelStride
+
+        val pixels = IntArray(image.width * image.height)
+        val byteArray = ByteArray(buffer.remaining())
+        buffer.get(byteArray)
+        var offset = 0
+        var index = 0
+        for (y in 0 until image.height) {
+            for (x in 0 until image.width) {
+                val pixelIndex = offset + x * pixelStride
+                val r = byteArray[pixelIndex].toInt() and 0xFF
+                val g = byteArray[pixelIndex + 1].toInt() and 0xFF
+                val b = byteArray[pixelIndex + 2].toInt() and 0xFF
+                val a = byteArray[pixelIndex + 3].toInt() and 0xFF
+                pixels[index++] = (a shl 24) or (r shl 16) or (g shl 8) or b
+            }
+            offset += rowStride
+        }
+
+        frameBitmap.setPixels(
+            pixels,
+            0,
+            image.width,
+            0,
+            0,
+            image.width,
+            image.height
+        )
+
+        return frameBitmap
+    }
+
     private fun getResultLauncher(
         mediaProjectionManager: MediaProjectionManager,
         client: SSLClient,
         imageHandler: Handler,
-        displayHandler: Handler
+        displayHandler: Handler,
+        mediaHandler: Handler,
+        displaySize: Size,
     ): ActivityResultLauncher<Intent>
     {
         return registerForActivityResult(
@@ -159,40 +262,20 @@ class MainActivity : ComponentActivity() {
                 val data: Intent? = result.data
                 val mediaProjection: MediaProjection =
                     mediaProjectionManager.getMediaProjection(result.resultCode, data!!)
-                mediaProjection.registerCallback(MediaCallback(), null)
-
-                val metrics = windowManager.currentWindowMetrics
-                // Gets all excluding insets
-                // Gets all excluding insets
-                val windowInsets: WindowInsets = metrics.windowInsets
-                val insets: Insets = windowInsets.getInsetsIgnoringVisibility(
-                    WindowInsets.Type.navigationBars()
-                            or WindowInsets.Type.displayCutout()
-                )
-
-                val insetsWidth: Int = insets.right + insets.left
-                val insetsHeight: Int = insets.top + insets.bottom
-
-                // Legacy size that Display#getSize reports
-
-                // Legacy size that Display#getSize reports
-                val bounds: Rect = metrics.bounds
-                val displaySize = Size(
-                    bounds.width() - insetsWidth,
-                    bounds.height() - insetsHeight
-                )
+                mediaProjection.registerCallback(MediaCallback(), mediaHandler)
 
                 val frameReader = ImageReader.newInstance(
-                    displaySize.width / 2,
-                    displaySize.height / 2,
+                    displaySize.width,
+                    displaySize.height,
                     PixelFormat.RGBA_8888,
                     5
                 )
+
                 val virtualDisplay = mediaProjection.createVirtualDisplay(
                     "ScreenCapture",
-                    displaySize.width / 2,
-                    displaySize.height / 2,
-                    8,
+                    displaySize.width,
+                    displaySize.height,
+                    (resources.displayMetrics.densityDpi),
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                     frameReader.surface,
                     DisplayCallback(),
@@ -201,12 +284,28 @@ class MainActivity : ComponentActivity() {
 
                 // Set up a listener for new frames
                 frameReader.setOnImageAvailableListener({ reader ->
+                    
                     val image: Image = reader.acquireNextImage()
-                    val buffer = image.planes[0].buffer
-                    val frameData: ByteArray = ByteArray(buffer.remaining())
-                    buffer.get(frameData)
+                    val bufferSize = (image.width / 4) * (image.height / 4) * 4
+
+                    val frameBitmap: Bitmap = getBitmap(image)
+
+                    val scaledBitmap: Bitmap = Bitmap.createScaledBitmap(
+                        frameBitmap,
+                        image.width / 4,
+                        image.height / 4,
+                        true
+                    )
+                    val bufferBitmap: ByteBuffer = ByteBuffer.allocate(bufferSize)
+                    scaledBitmap.copyPixelsToBuffer(bufferBitmap)
+                    val sentData: ByteArray = bufferBitmap.array()
+
+                    frameBitmap.recycle()
+                    scaledBitmap.recycle()
                     image.close()
-                    client.WriteImage(frameData, displaySize)
+
+                    client.WriteImage(sentData)
+
                 }, imageHandler)
             }
         }

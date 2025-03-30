@@ -62,8 +62,8 @@ fun HomePage(
     val captureOn = remember {
         mutableStateOf(false)
     }
-
     val serviceContext = LocalContext.current.applicationContext
+    
     val disabledButton = ButtonDefaults.buttonColors(
         contentColor = MaterialTheme.colorScheme.onSecondary,
         containerColor = MaterialTheme.colorScheme.onSecondaryContainer,

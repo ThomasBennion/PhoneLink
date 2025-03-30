@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import socket
 import sys
 import time
@@ -10,36 +12,32 @@ import PIL.ImageMode
 from RenderScreen import RenderScreen
 import ctypes
 import os
+import toml
 
 class ChatServer:
 
     def __init__(self):
-        self.host = "0.0.0.0"
+        with open('Settings.toml', 'r') as f:
+            config = toml.load(f)
+        
+        self.host = config['server']['host']
         self.client_name = None
-        self.port = None
+        self.port = config['server']['port']
         self.socket = None
         self.baseSocket = None
         self.conn = None
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        self.context.load_cert_chain("server.pem", "server.key")
+        self.context.load_cert_chain(config['certificates']['server'], config['certificates']['key'])
         
         self.context.verify_mode = ssl.CERT_REQUIRED
-        self.context.load_verify_locations(cafile="rootCA.pem")
+        self.context.load_verify_locations(cafile=config['certificates']['root'])
         
         self.imageNumber = 0
         self.RenderScreen = RenderScreen
         self.RenderData = None
-
-    def read_port_number(self):
-        """
-        Read the port number from argument, store it to self.port.
-        Exit with code 1 if invalid argument is provided.
-        :return: None
-        """
-        if len(sys.argv) < 1 or str.isdigit(sys.argv[1]) != True:
-            exit(1)
-        self.port = int(sys.argv[1])
-        return None
+        self.headerSize = 0
+        self.client_length = 0
+        self.client_width = 0
 
     def listen_on_port(self):
         """
@@ -63,34 +61,37 @@ class ChatServer:
         :return: None
         """
         self.conn, addr = self.socket.accept()
-        self.client_name = self.conn.recv(1024).decode()
+        client_info = ((self.conn.recv(1024).decode()).split("\x00", 1)[1]).split(":")
+        print(client_info,file=sys.stdout)
+        self.client_length = int(client_info[0]) // 4
+        self.client_width = int(client_info[1]) // 4 
+        self.headerSize = int(client_info[2])
+        self.client_name = client_info[3]
         print(("[(" + time.strftime("%H:%M:%S", time.localtime()) + ")] Get a connection from " + self.client_name), file=sys.stdout)
         self.conn.send(("Welcome to the channel, " + self.client_name).encode('utf-8'))
-        #self.RenderScreen.Render_Screen((1440 // 4), (2920 // 4), self.RenderData)
-        self.RenderData = bytearray(4204800)
-        #self.RenderData = bytearray(1074560)
-        threading.Thread(target=self.RenderScreen.Render_Screen, args=(1440 // 2, 2920 // 2, self.RenderData)).start()
+        self.RenderData = bytearray(self.client_length * self.client_width * 4)
+        threading.Thread(target=self.RenderScreen.Render_Screen, args=(self.client_width, self.client_length, self.RenderData)).start()
         return None
     
     def recv_image(self):
-        imageSize = int(self.conn.recv(7).decode())
+        imageSize = int(self.conn.recv(self.headerSize).decode().rstrip("\x00"))
         print(imageSize)
         if imageSize != None and imageSize != 0:
             # Now, receive the frame data itself
             imageData = b''
             while len(imageData) < imageSize:
-                packet = self.conn.recv(8192)
+                packet = self.conn.recv(512)
                 if not packet:
                     break
                 imageData += packet
             
             # At this point, you have the complete frame in `frame_data`
-            #print(f'Received frame of size: {len(imageData)} bytes')
+            print(f'Received frame of size: {len(imageData)} bytes')
             
-            #imageFile = PIL.Image.frombytes("RGBA", (1440 // 2, 2920 // 2), imageData)
+            #imageFile = PIL.Image.frombytes("RGBA", (self.client_width, self.client_length, imageData)
             #imageFile.save(f"Images/Image{self.imageNumber}.png")
             #imageFile.close()
-            self.imageNumber += 1
+            #self.imageNumber += 1
             self.RenderData[:] = imageData
         else:
             print("Error receiving image", file=sys.stdout)
@@ -149,7 +150,6 @@ class ChatServer:
         Run the chat server that receives and sends messages to the client
         :return: None
         """
-        self.read_port_number()
         self.listen_on_port()
         print(("[(" + time.strftime("%H:%M:%S", time.localtime()) + ")] Waiting for a connection"), file=sys.stdout)
         self.recv_client_connection()
@@ -157,8 +157,6 @@ class ChatServer:
         self.send_message()
         return None
 
-
 if __name__ == '__main__':
     chat_server = ChatServer()
     chat_server.run_chat_server()
-

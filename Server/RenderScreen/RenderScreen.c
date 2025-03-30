@@ -1,6 +1,6 @@
 #define RENDERSCREEN_MODULE
 #include <Python.h>
-#include </usr/include/python3.12/pyconfig-64.h>
+#include </usr/include/python3.13/pyconfig-64.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
@@ -97,8 +97,8 @@ PyObject* Render_Screen(PyObject* self, PyObject* args) {
     //printf(data);
     /* Create a windowed mode window and its OpenGL context */
     //glScalef(1, -1, 1);
-    int windowWidth = width / 2;
-    int windowHeight = height / 2;
+    int windowWidth = width;
+    int windowHeight = height;
     window = glfwCreateWindow(windowWidth, windowHeight, "Phone Display", NULL, NULL);
     if (!window)
     {
@@ -124,10 +124,10 @@ PyObject* Render_Screen(PyObject* self, PyObject* args) {
     // Vertex and Index data
     float vertices[] = {
         // Positions    // Texture Coords
-        1.0f, -1.0f,     width, height,  // Bottom-left
-        1.0f, 1.0f,    width, 0.0f,  // Bottom-right
-        -1.0f, 1.0f,   0.0f, 0.0f,  // Top-right
-        -1.0f, -1.0f,    0.0f, height   // Top-left
+        1.0f, -1.0f,    width, height,  // Bottom-left
+        1.0f, 1.0f,     width, 0.0f,    // Bottom-right
+        -1.0f, 1.0f,    0.0f, 0.0f,     // Top-right
+        -1.0f, -1.0f,   0.0f, height    // Top-left
     };
     
     unsigned int indices[] = {
