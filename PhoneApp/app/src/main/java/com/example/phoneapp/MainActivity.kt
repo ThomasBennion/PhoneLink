@@ -32,12 +32,16 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.phoneapp.ui.theme.SSLClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
@@ -61,7 +65,6 @@ class MainActivity : ComponentActivity() {
     val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
     override fun onCreate(savedInstanceState: Bundle?) {
-
         val metrics = windowManager.currentWindowMetrics
         // Gets all excluding insets
         // Gets all excluding insets
@@ -75,15 +78,11 @@ class MainActivity : ComponentActivity() {
         val insetsHeight: Int = insets.top + insets.bottom
 
         // Legacy size that Display#getSize reports
-
-        // Legacy size that Display#getSize reports
         val bounds: Rect = metrics.bounds
 
         val displaySize = Size(
             bounds.width(),
             bounds.height()
-            //(bounds.width() - insetsWidth),
-            //(bounds.height() - insetsHeight)
         )
 
         val startScreen = "home_screen"
@@ -98,17 +97,6 @@ class MainActivity : ComponentActivity() {
                     "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
                 )), 1);
         }
-
-        val EXAMPLE_COUNTER = intPreferencesKey("example_counter")
-        val exampleCounterFlow: Flow<Int> = this.dataStore.data
-            .map { preferences ->
-                // No type safety.
-                preferences[EXAMPLE_COUNTER] ?: 4655
-            }
-        val port: Int = 4655
-        val address = "192.168.5.30"
-        val bufferSize = 1089024
-        val host = InetSocketAddress(address, port)
         val clientTrustManager: TrustManagerFactory = TrustManagerFactory.getInstance(
             TrustManagerFactory.getDefaultAlgorithm()
         )
@@ -118,7 +106,8 @@ class MainActivity : ComponentActivity() {
         val appKeyStore: KeyStore = setCertificate()
         clientTrustManager.init(appKeyStore)
         clientKeyManager.init(appKeyStore, null)
-        val client = SSLClient(host, clientTrustManager, clientKeyManager, displaySize, this.dataStore)
+        val dataStore: DataStore<Preferences> = this.dataStore
+        val client = SSLClient(clientTrustManager, clientKeyManager, displaySize, dataStore)
         client.start()
         super.onCreate(savedInstanceState)
         val mediaProjectionManager =
@@ -159,6 +148,7 @@ class MainActivity : ComponentActivity() {
                 composable("settings_screen") {
                     SettingsPage(
                         client = client,
+                        dataStore = dataStore,
                         onBackPress = { navController.navigate("home_screen")}
                     )
                 }
@@ -223,11 +213,17 @@ class MainActivity : ComponentActivity() {
         for (y in 0 until image.height) {
             for (x in 0 until image.width) {
                 val pixelIndex = offset + x * pixelStride
+                /*
                 val r = byteArray[pixelIndex].toInt() and 0xFF
                 val g = byteArray[pixelIndex + 1].toInt() and 0xFF
                 val b = byteArray[pixelIndex + 2].toInt() and 0xFF
                 val a = byteArray[pixelIndex + 3].toInt() and 0xFF
                 pixels[index++] = (a shl 24) or (r shl 16) or (g shl 8) or b
+                */
+                pixels[index++] = ((byteArray[pixelIndex + 3].toInt() and 0xFF) shl 24) or
+                        ((byteArray[pixelIndex].toInt() and 0xFF) shl 16) or
+                        ((byteArray[pixelIndex + 1].toInt() and 0xFF) shl 8) or
+                        ((byteArray[pixelIndex + 2].toInt() and 0xFF))
             }
             offset += rowStride
         }

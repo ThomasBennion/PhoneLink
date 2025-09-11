@@ -86,7 +86,7 @@ class ChatServer:
                 imageData += packet
             
             # At this point, you have the complete frame in `frame_data`
-            print(f'Received frame of size: {len(imageData)} bytes')
+            #print(f'Received frame of size: {len(imageData)} bytes')
             
             #imageFile = PIL.Image.frombytes("RGBA", (self.client_width, self.client_length, imageData)
             #imageFile.save(f"Images/Image{self.imageNumber}.png")

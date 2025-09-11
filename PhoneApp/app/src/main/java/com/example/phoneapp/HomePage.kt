@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.phoneapp.ui.theme.PhoneAppTheme
 import com.example.phoneapp.ui.theme.SSLClient
+import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.Executors
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,8 +49,6 @@ fun HomePage(
     manager: MediaProjectionManager
 )
 {
-
-
     val default = ""
     var name = remember {
         mutableStateOf(default)
@@ -97,7 +96,6 @@ fun HomePage(
     LaunchedEffect(Unit) {
         val handler = Handler(Looper.getMainLooper())
         val executor = Executors.newSingleThreadExecutor()
-
         executor.execute(kotlinx.coroutines.Runnable {
             run {
                 val buffer = ByteArray(1024)
