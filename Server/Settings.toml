@@ -1,7 +1,9 @@
 [server]
 host = "0.0.0.0"
-port = 4655
 ssl = true
+
+[PhoneChannel]
+port = 4655
 
 [certificates]
 root = "./certs/rootCA.pem"
